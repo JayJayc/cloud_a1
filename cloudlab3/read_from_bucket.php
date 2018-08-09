@@ -1,7 +1,7 @@
 <?php
 
 $primes = explode(",",
-  file_get_contents('gs://sxxxxxx-storage/prime_numbers.txt')
+  file_get_contents('gs://s3600396-storage/prime_numbers.txt')
 );
 
 $arrlength=count($primes);
