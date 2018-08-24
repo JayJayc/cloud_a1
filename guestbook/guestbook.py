@@ -56,6 +56,7 @@ class Author(ndb.Model):
 class Greeting(ndb.Model):
     """A main model for representing an individual Guestbook entry."""
     author = ndb.StructuredProperty(Author)
+    subject = ndb.StringProperty(indexed=False)
     content = ndb.StringProperty(indexed=False)
     date = ndb.DateTimeProperty(auto_now_add=True)
 # [END greeting]
@@ -109,7 +110,7 @@ class Guestbook(webapp2.RequestHandler):
             greeting.author = Author(
                     identity=users.get_current_user().user_id(),
                     email=users.get_current_user().email())
-
+        greeting.subject = self.request.get('subject')
         greeting.content = self.request.get('content')
         greeting.put()
 

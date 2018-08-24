@@ -1,0 +1,535 @@
+1. Jarry Chen S3600396
+
+===============================================
++++++++++++++++++++++++++++++++++++++++++++++++
+===============================================
+2.
+
+(https://s3600396.appspot.com/)
+Guestbook.py
+
+===============================================
+===============================================
+#!/usr/bin/env python
+
+# Copyright 2016 Google Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# [START imports]
+import os
+import urllib
+
+from google.appengine.api import users
+from google.appengine.ext import ndb
+
+import jinja2
+import webapp2
+
+JINJA_ENVIRONMENT = jinja2.Environment(
+    loader=jinja2.FileSystemLoader(os.path.dirname(__file__)),
+    extensions=['jinja2.ext.autoescape'],
+    autoescape=True)
+# [END imports]
+
+DEFAULT_GUESTBOOK_NAME = 'default_guestbook'
+
+
+# We set a parent key on the 'Greetings' to ensure that they are all
+# in the same entity group. Queries across the single entity group
+# will be consistent. However, the write rate should be limited to
+# ~1/second.
+
+def guestbook_key(guestbook_name=DEFAULT_GUESTBOOK_NAME):
+    """Constructs a Datastore key for a Guestbook entity.
+
+    We use guestbook_name as the key.
+    """
+    return ndb.Key('Guestbook', guestbook_name)
+
+
+# [START greeting]
+class Author(ndb.Model):
+    """Sub model for representing an author."""
+    identity = ndb.StringProperty(indexed=False)
+    email = ndb.StringProperty(indexed=False)
+
+
+class Greeting(ndb.Model):
+    """A main model for representing an individual Guestbook entry."""
+    author = ndb.StructuredProperty(Author)
+    subject = ndb.StringProperty(indexed=False)
+    content = ndb.StringProperty(indexed=False)
+    date = ndb.DateTimeProperty(auto_now_add=True)
+# [END greeting]
+
+
+# [START main_page]
+class MainPage(webapp2.RequestHandler):
+
+    def get(self):
+        guestbook_name = self.request.get('guestbook_name',
+                                          DEFAULT_GUESTBOOK_NAME)
+        greetings_query = Greeting.query(
+            ancestor=guestbook_key(guestbook_name)).order(-Greeting.date)
+        greetings = greetings_query.fetch(10)
+
+        user = users.get_current_user()
+        if user:
+            url = users.create_logout_url(self.request.uri)
+            url_linktext = 'Logout'
+        else:
+            url = users.create_login_url(self.request.uri)
+            url_linktext = 'Login'
+
+        template_values = {
+            'user': user,
+            'greetings': greetings,
+            'guestbook_name': urllib.quote_plus(guestbook_name),
+            'url': url,
+            'url_linktext': url_linktext,
+        }
+
+        template = JINJA_ENVIRONMENT.get_template('index.html')
+        self.response.write(template.render(template_values))
+# [END main_page]
+
+
+# [START guestbook]
+class Guestbook(webapp2.RequestHandler):
+
+    def post(self):
+        # We set the same parent key on the 'Greeting' to ensure each
+        # Greeting is in the same entity group. Queries across the
+        # single entity group will be consistent. However, the write
+        # rate to a single entity group should be limited to
+        # ~1/second.
+        guestbook_name = self.request.get('guestbook_name',
+                                          DEFAULT_GUESTBOOK_NAME)
+        greeting = Greeting(parent=guestbook_key(guestbook_name))
+
+        if users.get_current_user():
+            greeting.author = Author(
+                    identity=users.get_current_user().user_id(),
+                    email=users.get_current_user().email())
+        greeting.subject = self.request.get('subject')
+        greeting.content = self.request.get('content')
+        greeting.put()
+
+        query_params = {'guestbook_name': guestbook_name}
+        self.redirect('/?' + urllib.urlencode(query_params))
+# [END guestbook]
+
+
+# [START app]
+app = webapp2.WSGIApplication([
+    ('/', MainPage),
+    ('/sign', Guestbook),
+], debug=True)
+# [END app]
+
+===============================================
+===============================================
+
+Index.html
+
+===============================================
+===============================================
+<!DOCTYPE html>
+{% autoescape true %}
+<html>
+  <head>
+    <!-- [START css] -->
+    <link type="text/css" rel="stylesheet" href="/bootstrap/css/bootstrap.css">
+    <link type="text/css" rel="stylesheet" href="/bootstrap/css/bootstrap-responsive.css">
+    <!-- [END css] -->
+    <style type="text/css">
+      body {
+        padding-top: 40px;
+        padding-bottom: 40px;
+        background-color: #f5f5f5;
+      }
+      blockquote {
+        margin-bottom: 10px;
+        border-left-color: #bbb;
+      }
+      form {
+        margin-top: 10px;
+      }
+      .form-signin input[type="text"] {
+        font-size: 16px;
+        height: auto;
+        margin-bottom: 15px;
+        padding: 7px 9px;
+      }
+      .row {
+        margin-left: 0px;
+        margin-top: 10px;
+        overflow: scroll;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="navbar navbar-inverse navbar-fixed-top">
+      <div class="navbar-inner">
+        <div class="container">
+          <button type="button" class="btn btn-navbar" data-toggle="collapse" data-target=".nav-collapse">
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+          </button>
+          <a class="brand" href="#">App Engine Guestbook</a>
+          <div class="nav-collapse collapse pull-right">
+            <a href="{{ url|safe }}" class="btn">{{ url_linktext }}</a>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="container">
+      <!-- [START greetings] -->
+      {% for greeting in greetings %}
+      <div class="row">
+        {% if greeting.author %}
+          <b>{{ greeting.author.email }}
+            {% if user and user.user_id() == greeting.author.identity %}
+              (You)
+            {% endif %}
+          </b> wrote with the subject ({{ greeting.subject }}):
+        {% else %}
+          An anonymous person wrote with the subject ({{ greeting.subject }}):
+        {% endif %}
+        <blockquote>{{ greeting.content }}</blockquote>
+      </div>
+      {% endfor %}
+      <!-- [END greetings] -->
+
+      <form action="/sign?guestbook_name={{ guestbook_name }}" method="post">
+        <label for="subject">Subject:</label>
+        <div><input type="text" id="subject" name="subject" class="input-block-level" ></div>
+        <div><textarea name="content" class="input-block-level" rows="3"></textarea></div>
+        <div><input type="submit" class="btn btn-large btn-primary" value="Sign Guestbook"></div>
+      </form>
+
+      <hr>
+
+      <form>Guestbook name:
+        <input value="{{ guestbook_name }}" name="guestbook_name">
+        <input type="submit" value="switch">
+      </form>
+
+      <a href="{{ url|safe }}">{{ url_linktext }}</a>
+    </div>
+  </body>
+</html>
+{% endautoescape %}
+
+
+===============================================
++++++++++++++++++++++++++++++++++++++++++++++++
+===============================================
+3.
+(https://s3600396-cc2018.appspot.com)
+Index.php
+
+===============================================
+===============================================
+<?php
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+
+    $number = intval(htmlspecialchars($_POST["number"]));
+
+    $file_name = "gs://s3600396-storage/fibonacci_{$number}.txt";
+
+    $handle = fopen("$file_name",'w');
+
+    $f1 = 0;
+    $f2 = 1;
+    for($i = 1; $i <= $number; $i ++) {
+
+        fwrite($handle, ", ".$f2);
+        $next = $f1 + $f2;
+        $f1 = $f2;
+        $f2 = $next;
+    }
+
+    fclose($handle);
+    $cookie_name = "fib_number";
+    $cookie_value = $number;
+    setcookie($cookie_name, $cookie_value, time() + (86400 * 30), "/"); // 86400 = 1 day
+
+    header('Location: second.php');
+}
+
+?>
+<!DOCTYPE html>
+<html>
+  <head>
+    <!-- [START css] -->
+    <link type="text/css" rel="stylesheet" href="/bootstrap/css/bootstrap.css">
+    <!-- [END css] -->
+    <style type="text/css">
+      body {
+        padding-top: 40px;
+        padding-bottom: 40px;
+        background-color: #f5f5f5;
+      }
+      blockquote {
+        margin-bottom: 10px;
+        border-left-color: #bbb;
+      }
+      form {
+        margin-top: 10px;
+      }
+      .form-signin input[type="text"] {
+        font-size: 16px;
+        height: auto;
+        margin-bottom: 15px;
+        padding: 7px 9px;
+      }
+    </style>
+  </head>
+  <body>
+    <form action="/" method="post">
+      N: <input type="number" name="number"><br>
+      <input type="submit">
+    </form>
+
+      <hr>
+  </body>
+</html>
+
+
+===============================================
+===============================================
+
+Second.php
+
+===============================================
+===============================================
+<?php
+$cookie_name = "fib_number";
+if(!isset($_COOKIE[$cookie_name])) {
+    echo "Cookie named '" . $cookie_name . "' is not set!";
+} else {
+    echo "Cookie : ". $_COOKIE[$cookie_name];
+    $fib_numbers = explode(",",
+        file_get_contents('gs://s3600396-storage/fibonacci_'.$_COOKIE[$cookie_name].'.txt')
+    );
+
+    $array_length=count($fib_numbers);
+    $sum = 0;
+    for($x=0;$x<$array_length;$x++)
+    {
+        $sum += $fib_numbers[$x];
+
+    }
+
+}
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+
+    $number = intval(htmlspecialchars($_POST["number"]));
+
+    $file_name = "gs://s3600396-storage/fibonacci_{$number}.txt";
+
+    $handle = fopen("$file_name",'w');
+
+    $f1 = 0;
+    $f2 = 1;
+    for($i = 1; $i <= $number; $i ++) {
+
+        fwrite($handle, ", ".$f2);
+        $next = $f1 + $f2;
+        $f1 = $f2;
+        $f2 = $next;
+    }
+
+    fclose($handle);
+    header('Location: page2.php');
+}
+?>
+<!DOCTYPE html>
+<html>
+  <head>
+    <!-- [START css] -->
+    <link type="text/css" rel="stylesheet" href="/bootstrap/css/bootstrap.css">
+    <!-- [END css] -->
+    <style type="text/css">
+      body {
+        padding-top: 40px;
+        padding-bottom: 40px;
+        background-color: #f5f5f5;
+      }
+      blockquote {
+        margin-bottom: 10px;
+        border-left-color: #bbb;
+      }
+      form {
+        margin-top: 10px;
+      }
+      .form-signin input[type="text"] {
+        font-size: 16px;
+        height: auto;
+        margin-bottom: 15px;
+        padding: 7px 9px;
+      }
+    </style>
+  </head>
+  <body>
+    <form id="form">
+      A: <input type="number" name="a_value"><br>
+      B: <input type="number" name="b_value"><br>
+      C: <input type="number" name="c_value"><br>
+      <input type="button" onclick="myFunction()" value="Submit">
+    </form>
+    <p id="total_sum"></p>
+    <p id="average"></p>
+      <hr>
+    <script>
+        function myFunction() {
+            let x = document.getElementById("form");
+            let fib_sum = parseInt("<?php echo $sum ?>");
+            let fib_num = parseInt(getFibNumber());
+            let a = parseInt(x[0].value);
+            let b = parseInt(x[1].value);
+            let c = parseInt(x[2].value);
+
+            let s = a + b;
+            let m = c * s;
+
+            let total_sum = m + fib_sum;
+            let average = (a + b + c + fib_sum)/(3+fib_num);
+
+            document.getElementById("total_sum").innerHTML = "Total Sum: " + total_sum + "";
+            document.getElementById("average").innerHTML = "Average: " + average +"";
+
+            writeResult(average);
+        }
+        // Used code from https://www.w3schools.com/js/js_cookies.asp
+        // to get the value of the cookie
+        function getFibNumber () {
+            let name = "fib_number=";
+            let decodedCookie = decodeURIComponent(document.cookie);
+            let ca = decodedCookie.split(';');
+            for(let i = 0; i <ca.length; i++) {
+                let c = ca[i];
+                while (c.charAt(0) === ' ') {
+                    c = c.substring(1);
+                }
+                if (c.indexOf(name) === 0) {
+                    return c.substring(name.length, c.length);
+                }
+            }
+            return "";
+        }
+
+        function writeResult(average) {
+            let http = new XMLHttpRequest();
+            let url = 'write_result_in_bucket.php';
+            let params = 'average='+average;
+            http.open('POST', url, true);
+
+            //Send the proper header information along with the request
+            http.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
+
+            http.onreadystatechange = function() {//Call a function when the state changes.
+                if(http.readyState === 4 && http.status === 200) {
+                    alert(http.responseText);
+                }
+            };
+            http.send(params);
+        }
+
+    </script>
+  </body>
+</html>
+
+===============================================
+===============================================
+
+write_result_in_bucket.php
+
+<?php
+
+$number = htmlspecialchars($_POST["average"]);
+echo "my number is $number";
+$file_name = "gs://s3600396-storage/result.txt";
+
+$handle = fopen("$file_name",'w');
+
+fwrite($handle, $number);
+
+fclose($handle);
+
+
+===============================================
+===============================================
+
+app.yaml
+
+===============================================
+===============================================
+runtime: php55
+api_version: 1
+
+handlers:
+- url: /
+  script: index.php
+
+- url: /second.php
+  script: second.php
+
+- url: /write_result_in_bucket.php
+  script: write_result_in_bucket.php
+
+===============================================
++++++++++++++++++++++++++++++++++++++++++++++++
+===============================================
+4.
+4.1. Find a list of all female babies born after 2008 with frequency count between 7000 and 17000.
+
+Query: 
+
+SELECT name,gender,year,SUM(count) as freq FROM [baby.baby_names] 
+WHERE gender = 'F' and year >= 2008 and count > 7000 and count <17000 
+Group by name,gender,year
+ORDER BY name asc;
+
+===============================================
+===============================================
+4.2. Find total number of male babies born before 2011 with name starts with ‘T’.
+
+Query: 
+SELECT name,gender,year FROM [baby.baby_names] 
+WHERE gender = 'M' and year < 2011 and lower(name) like "t%";
+
+===============================================
+===============================================
+4.3. Find top 20 baby names based on frequency after year 2006. 
+
+Query: 
+SELECT name, count, year FROM [baby.baby_names] 
+WHERE year >= 2006
+GROUP BY name, count, year
+ORDER BY count DESC limit 20;
+
+===============================================
++++++++++++++++++++++++++++++++++++++++++++++++
+===============================================
+5.
+Cloud based services are very efficent as developers can quickly deploy applications without dealing with the underlying infrastructure and hardware. 
+Hence high volume or big data applications will benefit greatly. Mission critical services can also benefit from the use of cloud services as theres less
+likely to be a central point of failure. Cloud will also give developers easy recovery and back up their data
+
+For the second assignment I would like to make an application that can notify me when my open orders are executed on an online cryptocurrency exchange. I will probably be
+using the exchange's API to get the data regarding my current open orders and then I would need to notify myself through an app or send a message to my phone.
+

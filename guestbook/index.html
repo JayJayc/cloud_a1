@@ -57,9 +57,9 @@
             {% if user and user.user_id() == greeting.author.identity %}
               (You)
             {% endif %}
-          </b> wrote:
+          </b> wrote with the subject ({{ greeting.subject }}):
         {% else %}
-          An anonymous person wrote:
+          An anonymous person wrote with the subject ({{ greeting.subject }}):
         {% endif %}
         <blockquote>{{ greeting.content }}</blockquote>
       </div>
@@ -67,6 +67,8 @@
       <!-- [END greetings] -->
 
       <form action="/sign?guestbook_name={{ guestbook_name }}" method="post">
+        <label for="subject">Subject:</label>
+        <div><input type="text" id="subject" name="subject" class="input-block-level" ></div>
         <div><textarea name="content" class="input-block-level" rows="3"></textarea></div>
         <div><input type="submit" class="btn btn-large btn-primary" value="Sign Guestbook"></div>
       </form>

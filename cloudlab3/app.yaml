@@ -2,5 +2,11 @@ runtime: php55
 api_version: 1
 
 handlers:
-- url: /.*
-  script: read_from_bucket.php
+- url: /
+  script: index.php
+
+- url: /second.php
+  script: second.php
+
+- url: /write_result_in_bucket.php
+  script: write_result_in_bucket.php
